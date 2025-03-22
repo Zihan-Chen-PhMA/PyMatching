@@ -157,6 +157,65 @@ void pm_pybind::pybind_user_graph_methods(py::module &m, py::class_<pm::UserGrap
     g.def("get_num_edges", &pm::UserGraph::get_num_edges);
     g.def("get_num_detectors", &pm::UserGraph::get_num_detectors);
     g.def("all_edges_have_error_probabilities", &pm::UserGraph::all_edges_have_error_probabilities);
+    g.def("SO_calculator_setup", [](pm::UserGraph &self){
+        self.SO_calculator_setup();
+    });
+    g.def("add_boundary_node_SO", [](pm::UserGraph &self, size_t boundary_index){
+        self.add_boundary_node_SO(boundary_index);
+    }, 
+    "boundary_index"_a);
+    g.def("add_boundary_edge_SO", [](pm::UserGraph &self, size_t inner_index, 
+                                     size_t boundary_index){
+        self.add_boundary_edge_SO(inner_index, boundary_index);                                
+    },
+    "inner_index"_a,
+    "boundary_index"_a);
+    g.def("add_cycle_endpoints_pair_SO", [](pm::UserGraph &self, size_t start_index,
+                                            size_t end_index) {
+        self.add_cycle_endpoints_pair_SO(start_index, end_index);
+    },
+    "start_index"_a,
+    "end_index"_a);
+    g.def("add_cycle_endpoints_pair_mono_SO", [](pm::UserGraph &self, size_t start_index, 
+                                                 size_t end_index) {
+        self.add_cycle_endpoints_pair_mono_SO(start_index, end_index);
+    },
+    "start_index"_a,
+    "end_index"_a);
+    g.def("add_image_node", [](pm::UserGraph &self, size_t original_index, size_t image_index) {
+        self.add_image_node(original_index,image_index);
+    },
+    "original_index"_a,
+    "image_index"_a);
+    g.def("redirect_edge_to_image", [](pm::UserGraph &self, size_t original_index,
+                                       size_t image_index, size_t target_index){
+        self.redirect_edge_to_image(original_index, image_index, target_index);
+    },
+    "original_index"_a,
+    "image_index"_a,
+    "target_index"_a);
+    g.def("add_boundary_edge_to_image", [](pm::UserGraph &self, size_t original_index,
+                                           size_t image_index, size_t boundary_index) {
+        self.add_boundary_edge_to_image(original_index, image_index, boundary_index);
+    },
+    "original_index"_a,
+    "image_index"_a,
+    "target_index"_a);
+    g.def("copy_edge_to_image", [](pm::UserGraph &self, size_t original_s_index, 
+                                   size_t original_t_index, size_t image_s_index,
+                                   size_t image_t_index){
+        self.copy_edge_to_image(original_s_index,original_t_index,image_s_index,image_t_index);
+    },
+    "original_s_index"_a,
+    "original_t_index"_a,
+    "image_s_index"_a,
+    "image_t_index"_a);
+    g.def("dijkstra_shortest_distance_path_debug", [](pm::UserGraph &self, size_t source_index,
+                                                      size_t target_index){
+        self.dijkstra_shortest_distance_path_debug(source_index, target_index);
+    },
+    "source_index"_a,
+    "target_index"_a);
     g.def("add_noise", [](pm::UserGraph &self) {
         auto error_vec = new std::vector<uint8_t>(self.get_num_observables(), 0);
         auto syndrome_vec = new std::vector<uint8_t>(self.get_num_nodes(), 0);
@@ -322,6 +381,183 @@ void pm_pybind::pybind_user_graph_methods(py::module &m, py::class_<pm::UserGrap
         "shots"_a,
         "bit_packed_shots"_a = false,
         "bit_packed_predictions"_a = false);
+    g.def(
+        "decode_batch_soft_output",
+        [](pm::UserGraph &self, const py::array_t<uint8_t> &shots, bool bit_packed_shots, bool bit_packed_predictions) {
+            if (shots.ndim() != 2)
+                throw std::invalid_argument(
+                    "`shots` array should have two dimensions, not " + std::to_string(shots.ndim()));
+            if (bit_packed_shots) {
+                size_t cols_min = (self.get_num_detectors() + 7) >> 3;
+                size_t cols_max = (self.get_num_nodes() + 7) >> 3;
+                if (shots.shape(1) < cols_min || shots.shape(1) > cols_max)
+                    throw std::invalid_argument(
+                        "bit_packed `shots` array should have at least " + std::to_string(cols_min) +
+                        " columns (ceil(num_detectors/8)) and at most " + std::to_string(cols_max) +
+                        " columns, (ceil(num_nodes/8)). Instead it has " + std::to_string(shots.shape(1)) +
+                        " columns.");
+            } else {
+                if (shots.shape(1) < self.get_num_detectors() || shots.shape(1) > self.get_num_nodes())
+                    throw std::invalid_argument(
+                        "`shots` array should have at least " + std::to_string(self.get_num_detectors()) +
+                        " columns (the number of "
+                        "detectors), and no more than " +
+                        std::to_string(self.get_num_nodes()) + " columns (the number of nodes), but instead has " +
+                        std::to_string(shots.shape(1)) + " columns");
+            }
+
+            // Reserve all-zeros predictions array
+            size_t num_observable_bytes =
+                bit_packed_predictions ? (self.get_num_observables() + 7) >> 3 : self.get_num_observables();
+            py::array_t<uint8_t> predictions = py::array_t<uint8_t>(shots.shape(0) * num_observable_bytes);
+            predictions[py::make_tuple(py::ellipsis())] = 0;  // Initialise to 0
+            py::buffer_info buff = predictions.request();
+            uint8_t *predictions_ptr = (uint8_t *)buff.ptr;
+
+            // Reserve weights array
+            py::array_t<double> weights = py::array_t<double>(shots.shape(0));
+            auto ws = weights.mutable_unchecked<1>();
+
+            auto &mwpm = self.get_mwpm();
+            auto &SO_calculator = self.get_SO_calculator();
+            std::vector<uint64_t> detection_events;
+
+            // Vector used to extract predicted observables when decoding if bit_packed_predictions is true
+            std::vector<uint8_t> temp_predictions;
+            if (bit_packed_predictions)
+                temp_predictions.resize(self.get_num_observables());
+
+            // Iterate over the shots, getting detection events and decoding
+            auto s = shots.unchecked<2>();
+            for (py::ssize_t i = 0; i < s.shape(0); i++) {
+                if (bit_packed_shots) {
+                    for (py::ssize_t j = 0; j < s.shape(1); j++) {
+                        size_t bit_offset = j << 3;
+                        for (size_t r = 0; r < 8; r++) {
+                            if (s(i, j) & (1 << r))
+                                detection_events.push_back(bit_offset + r);
+                        }
+                    }
+                } else {
+                    for (py::ssize_t j = 0; j < s.shape(1); j++) {
+                        if (s(i, j))
+                            detection_events.push_back(j);
+                    }
+                }
+                pm::total_weight_int solution_weight = 0;
+                if (bit_packed_predictions) {
+                    std::fill(temp_predictions.begin(), temp_predictions.end(), 0);
+                    pm::decode_detection_events_soft_output(mwpm, detection_events, temp_predictions.data(), solution_weight,
+                                                            SO_calculator);
+                    // bitpack the predictions
+                    for (size_t k = 0; k < temp_predictions.size(); k++) {
+                        size_t arr_idx = k >> 3;
+                        *(predictions_ptr + (num_observable_bytes * i) + arr_idx) ^= (temp_predictions[k] << (k % 8));
+                    }
+                } else {
+                    pm::decode_detection_events_soft_output(
+                        mwpm, detection_events, predictions_ptr + (num_observable_bytes * i), solution_weight,
+                        SO_calculator);
+                }
+                ws(i) = (double)solution_weight / mwpm.flooder.graph.normalising_constant;
+                detection_events.clear();
+            }
+            predictions.resize({(py::ssize_t)shots.shape(0), (py::ssize_t)num_observable_bytes});
+            return py::make_tuple(predictions, weights);
+        },
+        "shots"_a,
+        "bit_packed_shots"_a = false,
+        "bit_packed_predictions"_a = false);
+        g.def(
+            "decode_batch_soft_output_2d",
+            [](pm::UserGraph &self, const py::array_t<uint8_t> &shots, bool bit_packed_shots, bool bit_packed_predictions) {
+                if (shots.ndim() != 2)
+                    throw std::invalid_argument(
+                        "`shots` array should have two dimensions, not " + std::to_string(shots.ndim()));
+                if (bit_packed_shots) {
+                    size_t cols_min = (self.get_num_detectors() + 7) >> 3;
+                    size_t cols_max = (self.get_num_nodes() + 7) >> 3;
+                    if (shots.shape(1) < cols_min || shots.shape(1) > cols_max)
+                        throw std::invalid_argument(
+                            "bit_packed `shots` array should have at least " + std::to_string(cols_min) +
+                            " columns (ceil(num_detectors/8)) and at most " + std::to_string(cols_max) +
+                            " columns, (ceil(num_nodes/8)). Instead it has " + std::to_string(shots.shape(1)) +
+                            " columns.");
+                } else {
+                    if (shots.shape(1) < self.get_num_detectors() || shots.shape(1) > self.get_num_nodes())
+                        throw std::invalid_argument(
+                            "`shots` array should have at least " + std::to_string(self.get_num_detectors()) +
+                            " columns (the number of "
+                            "detectors), and no more than " +
+                            std::to_string(self.get_num_nodes()) + " columns (the number of nodes), but instead has " +
+                            std::to_string(shots.shape(1)) + " columns");
+                }
+    
+                // Reserve all-zeros predictions array
+                size_t num_observable_bytes =
+                    bit_packed_predictions ? (self.get_num_observables() + 7) >> 3 : self.get_num_observables();
+                py::array_t<uint8_t> predictions = py::array_t<uint8_t>(shots.shape(0) * num_observable_bytes);
+                predictions[py::make_tuple(py::ellipsis())] = 0;  // Initialise to 0
+                py::buffer_info buff = predictions.request();
+                uint8_t *predictions_ptr = (uint8_t *)buff.ptr;
+    
+                // Reserve weights array
+                py::array_t<double> weights = py::array_t<double>(shots.shape(0));
+                py::array_t<double> weights_mono = py::array_t<double>(shots.shape(0));
+                auto ws = weights.mutable_unchecked<1>();
+                auto ws_mono = weights_mono.mutable_unchecked<1>();
+    
+                auto &mwpm = self.get_mwpm();
+                auto &SO_calculator = self.get_SO_calculator();
+                std::vector<uint64_t> detection_events;
+    
+                // Vector used to extract predicted observables when decoding if bit_packed_predictions is true
+                std::vector<uint8_t> temp_predictions;
+                if (bit_packed_predictions)
+                    temp_predictions.resize(self.get_num_observables());
+    
+                // Iterate over the shots, getting detection events and decoding
+                auto s = shots.unchecked<2>();
+                for (py::ssize_t i = 0; i < s.shape(0); i++) {
+                    if (bit_packed_shots) {
+                        for (py::ssize_t j = 0; j < s.shape(1); j++) {
+                            size_t bit_offset = j << 3;
+                            for (size_t r = 0; r < 8; r++) {
+                                if (s(i, j) & (1 << r))
+                                    detection_events.push_back(bit_offset + r);
+                            }
+                        }
+                    } else {
+                        for (py::ssize_t j = 0; j < s.shape(1); j++) {
+                            if (s(i, j))
+                                detection_events.push_back(j);
+                        }
+                    }
+                    pm::total_weight_int solution_weight = 0;
+                    pm::total_weight_int solution_weight_mono = 0;
+                    if (bit_packed_predictions) {
+                        std::fill(temp_predictions.begin(), temp_predictions.end(), 0);
+                        pm::decode_detection_events_soft_output_2d(mwpm, detection_events, temp_predictions.data(), solution_weight_mono,
+                                                                    solution_weight, SO_calculator);
+                        // bitpack the predictions
+                        for (size_t k = 0; k < temp_predictions.size(); k++) {
+                            size_t arr_idx = k >> 3;
+                            *(predictions_ptr + (num_observable_bytes * i) + arr_idx) ^= (temp_predictions[k] << (k % 8));
+                        }
+                    } else {
+                        pm::decode_detection_events_soft_output_2d(mwpm, detection_events, predictions_ptr + (num_observable_bytes * i),
+                                solution_weight_mono, solution_weight, SO_calculator);
+                    }
+                    ws(i) = (double)solution_weight / mwpm.flooder.graph.normalising_constant;
+                    ws_mono(i) = (double)solution_weight_mono / mwpm.flooder.graph.normalising_constant;
+                    detection_events.clear();
+                }
+                predictions.resize({(py::ssize_t)shots.shape(0), (py::ssize_t)num_observable_bytes});
+                return py::make_tuple(predictions, weights_mono, weights);
+            },
+            "shots"_a,
+            "bit_packed_shots"_a = false,
+            "bit_packed_predictions"_a = false);
     g.def(
         "decode_to_matched_detection_events_dict",
         [](pm::UserGraph &self, const py::array_t<uint64_t> &detection_events) {

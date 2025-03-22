@@ -209,6 +209,93 @@ void pm::decode_detection_events(
     }
 }
 
+
+void pm::decode_detection_events_soft_output(
+    pm::Mwpm& mwpm,
+    const std::vector<uint64_t>& detection_events,
+    uint8_t* obs_begin_ptr,
+    pm::total_weight_int& weight,
+    dijkstra::SoftOutputDijkstra& SO_calculator) {
+    size_t num_observables = mwpm.flooder.graph.num_observables;
+    process_timeline_until_completion(mwpm, detection_events);
+    /// here! add something. 
+    // int64_t soft_output = 0;
+    int64_t soft_output = SO_calculator.SoftOutput(mwpm);
+
+    if (num_observables > sizeof(pm::obs_int) * 8) {
+        mwpm.flooder.match_edges.clear();
+        shatter_blossoms_for_all_detection_events_and_extract_match_edges(mwpm, detection_events);
+        if (!mwpm.flooder.negative_weight_detection_events.empty())
+            shatter_blossoms_for_all_detection_events_and_extract_match_edges(
+                mwpm, mwpm.flooder.negative_weight_detection_events);
+        mwpm.extract_paths_from_match_edges(mwpm.flooder.match_edges, obs_begin_ptr, weight);
+
+        // XOR negative weight observables
+        for (auto& obs : mwpm.flooder.negative_weight_observables)
+            *(obs_begin_ptr + obs) ^= 1;
+        // Add negative weight sum to blossom solution weight
+        weight += mwpm.flooder.negative_weight_sum;
+
+    } else {
+        pm::MatchingResult bit_packed_res =
+            shatter_blossoms_for_all_detection_events_and_extract_obs_mask_and_weight(mwpm, detection_events);
+        if (!mwpm.flooder.negative_weight_detection_events.empty())
+            bit_packed_res += shatter_blossoms_for_all_detection_events_and_extract_obs_mask_and_weight(
+                mwpm, mwpm.flooder.negative_weight_detection_events);
+        // XOR in negative weight observable mask
+        bit_packed_res.obs_mask ^= mwpm.flooder.negative_weight_obs_mask;
+        // Translate observable mask into bit vector
+        fill_bit_vector_from_obs_mask(bit_packed_res.obs_mask, obs_begin_ptr, num_observables);
+        // Add negative weight sum to blossom solution weight
+        weight = bit_packed_res.weight + mwpm.flooder.negative_weight_sum;
+    }
+    weight = soft_output;
+}
+
+void pm::decode_detection_events_soft_output_2d(
+    pm::Mwpm& mwpm,
+    const std::vector<uint64_t>& detection_events,
+    uint8_t* obs_begin_ptr,
+    pm::total_weight_int& weight_mono,
+    pm::total_weight_int& weight,
+    dijkstra::SoftOutputDijkstra& SO_calculator) {
+    size_t num_observables = mwpm.flooder.graph.num_observables;
+    process_timeline_until_completion(mwpm, detection_events);
+    /// here! add something. 
+    // int64_t soft_output = 0;
+    std::pair<int64_t,int64_t> soft_outputs = SO_calculator.SoftOutput_2d(mwpm);
+
+    if (num_observables > sizeof(pm::obs_int) * 8) {
+        mwpm.flooder.match_edges.clear();
+        shatter_blossoms_for_all_detection_events_and_extract_match_edges(mwpm, detection_events);
+        if (!mwpm.flooder.negative_weight_detection_events.empty())
+            shatter_blossoms_for_all_detection_events_and_extract_match_edges(
+                mwpm, mwpm.flooder.negative_weight_detection_events);
+        mwpm.extract_paths_from_match_edges(mwpm.flooder.match_edges, obs_begin_ptr, weight);
+
+        // XOR negative weight observables
+        for (auto& obs : mwpm.flooder.negative_weight_observables)
+            *(obs_begin_ptr + obs) ^= 1;
+        // Add negative weight sum to blossom solution weight
+        weight += mwpm.flooder.negative_weight_sum;
+
+    } else {
+        pm::MatchingResult bit_packed_res =
+            shatter_blossoms_for_all_detection_events_and_extract_obs_mask_and_weight(mwpm, detection_events);
+        if (!mwpm.flooder.negative_weight_detection_events.empty())
+            bit_packed_res += shatter_blossoms_for_all_detection_events_and_extract_obs_mask_and_weight(
+                mwpm, mwpm.flooder.negative_weight_detection_events);
+        // XOR in negative weight observable mask
+        bit_packed_res.obs_mask ^= mwpm.flooder.negative_weight_obs_mask;
+        // Translate observable mask into bit vector
+        fill_bit_vector_from_obs_mask(bit_packed_res.obs_mask, obs_begin_ptr, num_observables);
+        // Add negative weight sum to blossom solution weight
+        weight = bit_packed_res.weight + mwpm.flooder.negative_weight_sum;
+    }
+    weight_mono = soft_outputs.first;
+    weight = soft_outputs.second;
+}
+
 void pm::decode_detection_events_to_match_edges(pm::Mwpm& mwpm, const std::vector<uint64_t>& detection_events) {
     if (mwpm.flooder.negative_weight_sum != 0)
         throw std::invalid_argument(

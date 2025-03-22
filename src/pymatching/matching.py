@@ -166,6 +166,41 @@ class Matching:
         self.load_from_check_matrix(graph, weights, error_probabilities,
                                     repetitions, timelike_weights, measurement_error_probabilities,
                                     **kwargs)
+        self._matching_graph.SO_calculator_setup()
+
+    def SO_calculator_setup(self) -> None:
+        self._matching_graph.SO_calculator_setup()
+    
+    def add_boundary_node_SO(self, boundary_index: np.uint32) -> None:
+        self._matching_graph.add_boundary_node_SO(boundary_index)
+
+    def add_boundary_edge_SO(self, inner_index: np.uint32, boundary_index: np.uint32) -> None:
+        self._matching_graph.add_boundary_edge_SO(inner_index, boundary_index)
+    
+    def add_cycle_endpoints_pair_SO(self, start_index: np.uint32, end_index: np.uint32) -> None:
+        self._matching_graph.add_cycle_endpoints_pair_SO(start_index, end_index)
+    
+    def add_cycle_endpoints_pair_mono_SO(self, start_index: np.uint32, end_index: np.uint32) -> None:
+        self._matching_graph.add_cycle_endpoints_pair_mono_SO(start_index, end_index)
+
+    def add_image_node_SO(self, original_index: np.uint32, image_index: np.uint32) -> None:
+        self._matching_graph.add_image_node(original_index, image_index)
+    
+    def redirect_edge_to_image(self, original_index: np.uint32, image_index: np.uint32,
+                               target_index: np.uint32) -> None:
+        self._matching_graph.redirect_edge_to_image(original_index, image_index, target_index)
+    
+    def add_boundary_edge_to_image(self, original_index: np.uint32, image_index: np.uint32,
+                                   boundary_index: np.uint32) -> None:
+        self._matching_graph.add_boundary_edge_to_image(original_index, image_index, boundary_index)
+    
+    def copy_edge_to_image(self, original_s_index: np.uint32, original_t_index: np.uint32,
+                           image_s_index: np.uint32, image_t_index: np.uint32) -> None:
+        self._matching_graph.copy_edge_to_image(original_s_index,original_t_index,
+                                                image_s_index,image_t_index)
+    
+    def dijkstra_shortest_distance_path_debug(self, source_index: np.uint32, target_index: np.uint32) -> None:
+        self._matching_graph.dijkstra_shortest_distance_path_debug(source_index, target_index)
 
     def add_noise(self) -> Union[Tuple[np.ndarray, np.ndarray], None]:
         """Add noise by flipping edges in the matching graph with
@@ -423,6 +458,204 @@ class Matching:
         )
         if return_weights:
             return predictions, weights
+        else:
+            return predictions
+    
+    def decode_batch_soft_output(
+            self,
+            shots: np.ndarray,
+            *,
+            return_weights: bool = True,
+            bit_packed_shots: bool = False,
+            bit_packed_predictions: bool = False) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+        """
+        Decode from a 2D `shots` array containing a batch of syndrome measurements. A faster
+        alternative to using `pymatching.Matching.decode` and iterating over the shots in Python.
+
+        Parameters
+        ----------
+        shots : np.ndarray
+            A 2D numpy array of shots to decode, of `dtype=np.uint8`.
+
+            If `bit_packed_shots==False`, then
+            `shots` should have shape `shots.shape=(num_shots, syndrome_length)`, where `num_shots` is the
+            number of shots (samples), and `syndrome_length` is the length of the binary syndrome vector to be
+            decoded for each shot. If `len(self.boundary)==0` (e.g. if there is no boundary, or only a virtual
+            boundary node, the default when loading from stim) then `syndrome_length=self.num_detectors`.
+            However, `syndrome_length` is permitted to be as high as `self.num_nodes` in case the graph contains
+            detectors nodes with an index larger than `self.num_detectors-1` (when `len(self.boundary)>0`).
+
+            If `bit_packed_shots==True` then `shots` should have shape
+            `shots.shape=(num_shots, math.ceil(syndrome_length / 8))`. Bit packing should be done using little endian
+            order on the last axis (like ``np.packbits(data, bitorder='little', axis=1)``), so that the bit for
+            detection event `m` in shot `s` can be found at ``(dets[s, m // 8] >> (m % 8)) & 1``.
+        return_weights : bool
+            If True, then also return a numpy array containing the weights of the solutions for all the shots.
+            By default, False.
+        bit_packed_shots : bool
+            Set to `True` to provide `shots` as a bit-packed array, such that the bit for
+            detection event `m` in shot `s` can be found at ``(dets[s, m // 8] >> (m % 8)) & 1``.
+        bit_packed_predictions : bool
+            Set to `True` if the returned predictions should be bit-packed, with the bit for fault id `m` in
+            shot `s` in ``(obs[s, m // 8] >> (m % 8)) & 1``
+
+        Returns
+        -------
+        predictions: np.ndarray
+            The batch of predictions output by the decoder, a binary numpy array of `dtype=np.uint8` and with shape
+            `predictions.shape=(num_shots, self.num_fault_ids)`. `predictions[i, j]=1` iff the decoder predicts that
+            fault id `j` was flipped in the shot `i`.
+        weights: np.ndarray
+            The weights of the MWPM solutions, a numpy array of `dtype=float`. `weights[i]` is the weight of the
+            MWPM solution in shot `i`.
+
+        Examples
+        --------
+        >>> import pymatching
+        >>> import stim
+        >>> circuit = stim.Circuit.generated("surface_code:rotated_memory_x",
+        ...                                  distance=5,
+        ...                                  rounds=5,
+        ...                                  after_clifford_depolarization=0.005)
+        >>> model = circuit.detector_error_model(decompose_errors=True)
+        >>> matching = pymatching.Matching.from_detector_error_model(model)
+        >>> sampler = circuit.compile_detector_sampler()
+        >>> syndrome, actual_observables = sampler.sample(shots=10000, separate_observables=True)
+        >>> syndrome.shape
+        (10000, 120)
+        >>> actual_observables.shape
+        (10000, 1)
+        >>> predicted_observables = matching.decode_batch(syndrome)
+        >>> predicted_observables.shape
+        (10000, 1)
+        >>> num_errors = np.sum(np.any(predicted_observables != actual_observables, axis=1))
+
+        We can also decode bit-packed shots, and return bit-packed predictions:
+        >>> import pymatching
+        >>> import stim
+        >>> circuit = stim.Circuit.generated("surface_code:rotated_memory_x",
+        ...                                  distance=5,
+        ...                                  rounds=5,
+        ...                                  after_clifford_depolarization=0.005)
+        >>> model = circuit.detector_error_model(decompose_errors=True)
+        >>> matching = pymatching.Matching.from_detector_error_model(model)
+        >>> sampler = circuit.compile_detector_sampler()
+        >>> syndrome, actual_observables = sampler.sample(shots=10000, separate_observables=True, bit_packed=True)
+        >>> syndrome.shape
+        (10000, 15)
+        >>> actual_observables.shape
+        (10000, 1)
+        >>> predicted_observables = matching.decode_batch(syndrome, bit_packed_shots=True, bit_packed_predictions=True)
+        >>> predicted_observables.shape
+        (10000, 1)
+        >>> num_errors = np.sum(np.any(predicted_observables != actual_observables, axis=1))
+        """
+        predictions, weights = self._matching_graph.decode_batch_soft_output(
+            shots,
+            bit_packed_predictions=bit_packed_predictions,
+            bit_packed_shots=bit_packed_shots
+        )
+        if return_weights:
+            return predictions, weights
+        else:
+            return predictions
+    
+    def decode_batch_soft_output_2d(
+            self,
+            shots: np.ndarray,
+            *,
+            return_weights: bool = True,
+            bit_packed_shots: bool = False,
+            bit_packed_predictions: bool = False) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+        """
+        Decode from a 2D `shots` array containing a batch of syndrome measurements. A faster
+        alternative to using `pymatching.Matching.decode` and iterating over the shots in Python.
+
+        Parameters
+        ----------
+        shots : np.ndarray
+            A 2D numpy array of shots to decode, of `dtype=np.uint8`.
+
+            If `bit_packed_shots==False`, then
+            `shots` should have shape `shots.shape=(num_shots, syndrome_length)`, where `num_shots` is the
+            number of shots (samples), and `syndrome_length` is the length of the binary syndrome vector to be
+            decoded for each shot. If `len(self.boundary)==0` (e.g. if there is no boundary, or only a virtual
+            boundary node, the default when loading from stim) then `syndrome_length=self.num_detectors`.
+            However, `syndrome_length` is permitted to be as high as `self.num_nodes` in case the graph contains
+            detectors nodes with an index larger than `self.num_detectors-1` (when `len(self.boundary)>0`).
+
+            If `bit_packed_shots==True` then `shots` should have shape
+            `shots.shape=(num_shots, math.ceil(syndrome_length / 8))`. Bit packing should be done using little endian
+            order on the last axis (like ``np.packbits(data, bitorder='little', axis=1)``), so that the bit for
+            detection event `m` in shot `s` can be found at ``(dets[s, m // 8] >> (m % 8)) & 1``.
+        return_weights : bool
+            If True, then also return a numpy array containing the weights of the solutions for all the shots.
+            By default, False.
+        bit_packed_shots : bool
+            Set to `True` to provide `shots` as a bit-packed array, such that the bit for
+            detection event `m` in shot `s` can be found at ``(dets[s, m // 8] >> (m % 8)) & 1``.
+        bit_packed_predictions : bool
+            Set to `True` if the returned predictions should be bit-packed, with the bit for fault id `m` in
+            shot `s` in ``(obs[s, m // 8] >> (m % 8)) & 1``
+
+        Returns
+        -------
+        predictions: np.ndarray
+            The batch of predictions output by the decoder, a binary numpy array of `dtype=np.uint8` and with shape
+            `predictions.shape=(num_shots, self.num_fault_ids)`. `predictions[i, j]=1` iff the decoder predicts that
+            fault id `j` was flipped in the shot `i`.
+        weights: np.ndarray
+            The weights of the MWPM solutions, a numpy array of `dtype=float`. `weights[i]` is the weight of the
+            MWPM solution in shot `i`.
+
+        Examples
+        --------
+        >>> import pymatching
+        >>> import stim
+        >>> circuit = stim.Circuit.generated("surface_code:rotated_memory_x",
+        ...                                  distance=5,
+        ...                                  rounds=5,
+        ...                                  after_clifford_depolarization=0.005)
+        >>> model = circuit.detector_error_model(decompose_errors=True)
+        >>> matching = pymatching.Matching.from_detector_error_model(model)
+        >>> sampler = circuit.compile_detector_sampler()
+        >>> syndrome, actual_observables = sampler.sample(shots=10000, separate_observables=True)
+        >>> syndrome.shape
+        (10000, 120)
+        >>> actual_observables.shape
+        (10000, 1)
+        >>> predicted_observables = matching.decode_batch(syndrome)
+        >>> predicted_observables.shape
+        (10000, 1)
+        >>> num_errors = np.sum(np.any(predicted_observables != actual_observables, axis=1))
+
+        We can also decode bit-packed shots, and return bit-packed predictions:
+        >>> import pymatching
+        >>> import stim
+        >>> circuit = stim.Circuit.generated("surface_code:rotated_memory_x",
+        ...                                  distance=5,
+        ...                                  rounds=5,
+        ...                                  after_clifford_depolarization=0.005)
+        >>> model = circuit.detector_error_model(decompose_errors=True)
+        >>> matching = pymatching.Matching.from_detector_error_model(model)
+        >>> sampler = circuit.compile_detector_sampler()
+        >>> syndrome, actual_observables = sampler.sample(shots=10000, separate_observables=True, bit_packed=True)
+        >>> syndrome.shape
+        (10000, 15)
+        >>> actual_observables.shape
+        (10000, 1)
+        >>> predicted_observables = matching.decode_batch(syndrome, bit_packed_shots=True, bit_packed_predictions=True)
+        >>> predicted_observables.shape
+        (10000, 1)
+        >>> num_errors = np.sum(np.any(predicted_observables != actual_observables, axis=1))
+        """
+        predictions, weights_mono, weights = self._matching_graph.decode_batch_soft_output_2d(
+            shots,
+            bit_packed_predictions=bit_packed_predictions,
+            bit_packed_shots=bit_packed_shots
+        )
+        if return_weights:
+            return predictions, weights_mono, weights
         else:
             return predictions
 

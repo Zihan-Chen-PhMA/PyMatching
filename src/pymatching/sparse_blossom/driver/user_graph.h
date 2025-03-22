@@ -23,6 +23,7 @@
 #include "pymatching/rand/rand_gen.h"
 #include "pymatching/sparse_blossom/driver/io.h"
 #include "pymatching/sparse_blossom/ints.h"
+#include "pymatching/sparse_blossom/gap_dijkstra/dijkstra_graph.h"
 
 namespace pm {
 
@@ -56,6 +57,8 @@ class UserGraph {
     std::vector<UserNode> nodes;
     std::list<UserEdge> edges;
     std::set<size_t> boundary_nodes;
+    dijkstra::SoftOutputDijkstra SO_calculator;
+    std::vector<dijkstra::SoftOutputDijkstra> SO_calculators;
 
     UserGraph();
     explicit UserGraph(size_t num_nodes);
@@ -108,8 +111,19 @@ class UserGraph {
     pm::SearchGraph to_search_graph(pm::weight_int num_distinct_weights);
     pm::Mwpm to_mwpm(pm::weight_int num_distinct_weights, bool ensure_search_graph_included);
     void update_mwpm();
+    void SO_calculator_setup(); // setting up all SO calculators.
+    void add_boundary_node_SO(size_t boundary_index);
+    void add_boundary_edge_SO(size_t inner_index, size_t boundary_index);
+    void add_cycle_endpoints_pair_SO(size_t start_index, size_t end_index);
+    void add_cycle_endpoints_pair_mono_SO(size_t start_index, size_t end_index);
+    void add_image_node(size_t original_index, size_t image_index);
+    void redirect_edge_to_image(size_t original_index, size_t image_index, size_t target_index);
+    void add_boundary_edge_to_image(size_t original_index, size_t image_index, size_t boundary_index);
+    void copy_edge_to_image(size_t original_s_index, size_t original_t_index, size_t image_s_index, size_t image_t_index);
+    void dijkstra_shortest_distance_path_debug(size_t source_index, size_t target_index);
     Mwpm& get_mwpm();
     Mwpm& get_mwpm_with_search_graph();
+    dijkstra::SoftOutputDijkstra& get_SO_calculator();
     void handle_dem_instruction(double p, const std::vector<size_t>& detectors, const std::vector<size_t>& observables);
     void get_nodes_on_shortest_path_from_source(size_t src, size_t dst, std::vector<size_t>& out_nodes);
 

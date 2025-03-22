@@ -197,10 +197,57 @@ void pm::UserGraph::update_mwpm() {
     _mwpm_needs_updating = false;
 }
 
+void pm::UserGraph::SO_calculator_setup() {
+    update_mwpm();
+    SO_calculator.fl_matching_graph = SO_calculator.mwpm_to_dijkstra_graph(_mwpm);
+    SO_calculator.normalizer = _mwpm.flooder.graph.normalising_constant;
+    // std::cout << SO_calculator.normalizer << boost::num_vertices(SO_calculator.fl_matching_graph) << std::endl;
+}
+
+void pm::UserGraph::add_boundary_node_SO(size_t boundary_index) {
+    SO_calculator.add_boundary_node(boundary_index);
+}
+
+void pm::UserGraph::add_boundary_edge_SO(size_t inner_index, size_t boundary_index) {
+    SO_calculator.add_boundary_edge_from_mwpm(inner_index, boundary_index, _mwpm);
+}
+
+void pm::UserGraph::add_cycle_endpoints_pair_SO(size_t start_index, size_t end_index) {
+    SO_calculator.add_cycle_endpoint_pair(start_index, end_index);
+}
+
+void pm::UserGraph::add_cycle_endpoints_pair_mono_SO(size_t start_index, size_t end_index) {
+    SO_calculator.add_cycle_endpoint_pair_mono(start_index, end_index);
+}
+
+void pm::UserGraph::add_image_node(size_t original_index, size_t image_index) {
+    SO_calculator.add_image_node(original_index, image_index);
+}
+
+void pm::UserGraph::redirect_edge_to_image(size_t original_index, size_t image_index, size_t target_index) {
+    SO_calculator.redirect_edge_to_image(original_index, image_index, target_index);
+}
+
+void pm::UserGraph::add_boundary_edge_to_image(size_t original_index, size_t image_index, size_t boundary_index) {
+    SO_calculator.add_boundary_edge_to_image_from_mwpm(original_index, image_index, boundary_index, _mwpm);
+}
+
+void pm::UserGraph::copy_edge_to_image(size_t original_s_index, size_t original_t_index, size_t image_s_index, size_t image_t_index) {
+    SO_calculator.copy_edge_to_image(original_s_index,original_t_index,image_s_index,image_t_index);
+}
+
+void pm::UserGraph::dijkstra_shortest_distance_path_debug(size_t source_index, size_t target_index) {
+    SO_calculator.dijkstra_shortest_distance_path_debug(source_index, target_index);
+}
+
 pm::Mwpm& pm::UserGraph::get_mwpm() {
     if (_mwpm_needs_updating)
         update_mwpm();
     return _mwpm;
+}
+
+dijkstra::SoftOutputDijkstra& pm::UserGraph::get_SO_calculator() {
+    return SO_calculator;
 }
 
 void pm::UserGraph::add_noise(uint8_t* error_arr, uint8_t* syndrome_arr) const {

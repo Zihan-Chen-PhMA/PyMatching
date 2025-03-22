@@ -18,6 +18,7 @@
 #include "pymatching/sparse_blossom/driver/io.h"
 #include "pymatching/sparse_blossom/matcher/mwpm.h"
 #include "stim.h"
+#include "pymatching/sparse_blossom/gap_dijkstra/dijkstra_graph.h"
 
 namespace pm {
 
@@ -65,6 +66,23 @@ void decode_detection_events(
     const std::vector<uint64_t>& detection_events,
     uint8_t* obs_begin_ptr,
     pm::total_weight_int& weight);
+
+
+void decode_detection_events_soft_output(
+    pm::Mwpm& mwpm,
+    const std::vector<uint64_t>& detection_events,
+    uint8_t* obs_begin_ptr,
+    pm::total_weight_int& weight,
+    dijkstra::SoftOutputDijkstra& SO_calculator);
+
+void decode_detection_events_soft_output_2d(
+    pm::Mwpm& mwpm,
+    const std::vector<uint64_t>& detection_events,
+    uint8_t* obs_begin_ptr,
+    pm::total_weight_int& weight_mono,
+    pm::total_weight_int& weight,
+    dijkstra::SoftOutputDijkstra& SO_calculator);
+
 
 /// Decode detection events using a Mwpm object and vector of detection event indices
 /// Returns the compressed edges in the matching: the pairs of detection events that are
