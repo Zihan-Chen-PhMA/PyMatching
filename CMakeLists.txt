@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.4...3.18)
 project(PyMatching2)
 
 include_directories(src)
+include_directories(lib/boost_1_82_0)
 set(CMAKE_CXX_STANDARD 20 CACHE STRING "C++ version selection")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(SIMD_WIDTH 128)
@@ -58,6 +59,7 @@ set(SOURCE_FILES_NO_MAIN
         src/pymatching/sparse_blossom/search/search_flooder.cc
         src/pymatching/sparse_blossom/driver/user_graph.cc
         src/pymatching/rand/rand_gen.cc
+        src/pymatching/sparse_blossom/gap_dijkstra/dijkstra_graph.cc
         )
 
 set(TEST_FILES
@@ -129,6 +131,7 @@ target_link_libraries(pymatching_perf libstim)
 add_library(libpymatching ${SOURCE_FILES_NO_MAIN})
 set_target_properties(libpymatching PROPERTIES PREFIX "")
 target_include_directories(libpymatching PUBLIC src)
+target_include_directories(libpymatching PUBLIC "lib/boost_1_82_0")
 target_compile_options(libpymatching PRIVATE ${ARCH_OPT} -fPIC)
 if(NOT(MSVC))
     target_link_options(libpymatching PRIVATE -pthread -O3)
