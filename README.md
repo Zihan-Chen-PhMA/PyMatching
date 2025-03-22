@@ -1,3 +1,11 @@
+## Added feature: Calculating Soft Outputs for each decoding shot
+The soft-output method in [arXiv:2405.07433](https://arxiv.org/abs/2405.07433) by Meister et al. serves a similar purpose as the complementary gap method in 
+[arXiv:2312.04522](https://arxiv.org/abs/2312.04522) but is more versatile since the soft-output mothod does not have a hard requirement on the boundary condition of the surface codes or decoding 
+graphs. Following [this StackExchange post](https://quantumcomputing.stackexchange.com/questions/35572/how-to-force-pymatching-into-the-opposite-equivalence-class), 
+the soft-output method can be implemented on the sparse blossom algorithm so that for each decoding shot, a soft output (or 
+perhaps a few soft outputs) is calculated based on the internal variables (graph_fill_regions) created during the docoding process. See [] for an 
+example of how to obtain soft output when decoding SE circuits on rotated surface codes. 
+
 # PyMatching 2
 
 ![Continuous Integration](https://github.com/oscarhiggott/PyMatching/workflows/ci/badge.svg)
