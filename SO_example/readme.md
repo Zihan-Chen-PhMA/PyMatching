@@ -8,4 +8,4 @@ run [sampling_SE_surface_codes_SO.py](https://github.com/Zihan-Chen-PhMA/PyMatch
 ### Plot the results:
 run [so_res_plot.py](https://github.com/Zihan-Chen-PhMA/PyMatching/blob/master/SO_example/so_res_plot.py)
 
-Note: Read the pdf document for more detail (and a comparision between soft-output method and the complementary gap method).
+Note: Read [SoftOutput_vs_complementary_gap_test_results.pdf](https://github.com/Zihan-Chen-PhMA/PyMatching/blob/master/SO_example/SoftOutput_vs_complementary_gap_test_results.pdf) for more detail (and a comparision between soft-output method and the complementary gap method).
