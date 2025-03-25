@@ -370,21 +370,6 @@ namespace dijkstra{
     
     void SoftOutputDijkstra::reweight(pm::Mwpm &mwpm) {
         flooded_node_indices.clear();
-        // if (mwpm.flooder.region_arena.allocated.size() == 0) {
-        //     return;
-        // }
-        // for (pm::GraphFillRegion *region : mwpm.flooder.region_arena.allocated) {
-        //     for (pm::DetectorNode *node : region->shell_area) {
-        //         size_t node_index = node - &mwpm.flooder.graph.nodes[0];
-        //         if (node_index > nodes.size()-1) {
-        //             std::cout << node_index << std::endl;
-        //             throw std::invalid_argument("what? node index out of range.");
-        //         }
-                
-        //         nodes[node_index].local_radius = get_final_local_radius_from_node(node);
-        //         flooded_node_indices.push_back(node_index);
-        //     }
-        // }
         for (pm::DetectorNode &node : mwpm.flooder.graph.nodes) {
             if (node.region_that_arrived_top != nullptr) {
                 size_t node_index = &node - &mwpm.flooder.graph.nodes[0];
@@ -401,7 +386,6 @@ namespace dijkstra{
             for (size_t i=0; i<node->neighbors.size(); i++) {
                 if (node->neighbors[i] == nullptr) {
                     nodes[node_index].neighbor_flooded_weights[i] -= nodes[node_index].local_radius;
-                    // node->neighbor_flooded_weights[i] -= node->local_radius_fixed; 
                     if (nodes[node_index].neighbor_flooded_weights[i] < 0) {
                         nodes[node_index].neighbor_flooded_weights[i] = 0;
                     }

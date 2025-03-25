@@ -201,7 +201,6 @@ void pm::UserGraph::SO_calculator_setup() {
     update_mwpm();
     SO_calculator.fl_matching_graph = SO_calculator.mwpm_to_dijkstra_graph(_mwpm);
     SO_calculator.normalizer = _mwpm.flooder.graph.normalising_constant;
-    // std::cout << SO_calculator.normalizer << boost::num_vertices(SO_calculator.fl_matching_graph) << std::endl;
 }
 
 void pm::UserGraph::add_boundary_node_SO(size_t boundary_index) {

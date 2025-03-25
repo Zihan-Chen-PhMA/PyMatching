@@ -218,8 +218,8 @@ void pm::decode_detection_events_soft_output(
     dijkstra::SoftOutputDijkstra& SO_calculator) {
     size_t num_observables = mwpm.flooder.graph.num_observables;
     process_timeline_until_completion(mwpm, detection_events);
-    /// here! add something. 
-    // int64_t soft_output = 0;
+    // Here, all graph fill regions are frozon. (And blossom are still unshattered) 
+    // Calculate the soft output given the existing regions.
     int64_t soft_output = SO_calculator.SoftOutput(mwpm);
 
     if (num_observables > sizeof(pm::obs_int) * 8) {
@@ -261,8 +261,8 @@ void pm::decode_detection_events_soft_output_2d(
     dijkstra::SoftOutputDijkstra& SO_calculator) {
     size_t num_observables = mwpm.flooder.graph.num_observables;
     process_timeline_until_completion(mwpm, detection_events);
-    /// here! add something. 
-    // int64_t soft_output = 0;
+    // Here, all graph fill regions are frozon. (And blossom are still unshattered) 
+    // Calculate the soft output given the existing regions.
     std::pair<int64_t,int64_t> soft_outputs = SO_calculator.SoftOutput_2d(mwpm);
 
     if (num_observables > sizeof(pm::obs_int) * 8) {

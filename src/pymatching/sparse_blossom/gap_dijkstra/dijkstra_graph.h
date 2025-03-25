@@ -62,7 +62,6 @@ namespace dijkstra{
         std::vector<int64_t> neighbor_weights;
         std::vector<int64_t> neighbor_flooded_weights;
         Node() : local_radius(0) {}
-        // int64_t get_final_local_radius_from_node(pm::DetectorNode *node);
     };
 
 
